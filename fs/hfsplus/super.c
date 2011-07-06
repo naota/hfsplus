@@ -28,10 +28,20 @@ static int hfsplus_system_read_inode(struct inode *inode)
 	switch (inode->i_ino) {
 	case HFSPLUS_EXT_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->ext_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	case HFSPLUS_CAT_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->cat_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	case HFSPLUS_ALLOC_CNID:
@@ -43,6 +53,11 @@ static int hfsplus_system_read_inode(struct inode *inode)
 		break;
 	case HFSPLUS_ATTR_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->attr_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	default:
@@ -231,6 +246,9 @@ static void hfsplus_write_super(struct super_block *sb)
 static void hfsplus_put_super(struct super_block *sb)
 {
 	struct hfsplus_sb_info *sbi = HFSPLUS_SB(sb);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	int jnl_ret;
+#endif
 
 	dprint(DBG_SUPER, "hfsplus_put_super\n");
 
@@ -244,13 +262,24 @@ static void hfsplus_put_super(struct super_block *sb)
 		vhdr->attributes |= cpu_to_be32(HFSPLUS_VOL_UNMNT);
 		vhdr->attributes &= cpu_to_be32(~HFSPLUS_VOL_INCNSTNT);
 
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		jnl_ret = hfsplus_journaled_start_transaction(NULL, sb);
+#endif
 		hfsplus_sync_fs(sb, 1);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (jnl_ret == HFSPLUS_JOURNAL_SUCCESS)
+			hfsplus_journaled_end_transaction(NULL, sb);
+#endif
 	}
 
 	hfs_btree_close(sbi->cat_tree);
 	hfs_btree_close(sbi->ext_tree);
 	iput(sbi->alloc_file);
 	iput(sbi->hidden_dir);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	hfsplus_journaled_deinit(sb);
+	if (HFSPLUS_SB(sb).s_vhbh)
+#endif
 	kfree(sbi->s_vhdr);
 	kfree(sbi->s_backup_vhdr);
 	unload_nls(sbi->nls);
@@ -290,10 +319,15 @@ static int hfsplus_remount(struct super_block *sb, int *flags, char *data)
 			return -EINVAL;
 
 		if (!(vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_UNMNT))) {
+#if 0
 			printk(KERN_WARNING "hfs: filesystem was "
 					"not cleanly unmounted, "
 					"running fsck.hfsplus is recommended.  "
 					"leaving read-only.\n");
+#else
+			printk("HFS+-fs warning: Filesystem was not cleanly unmounted, "
+					"running fsck.hfsplus is recommended.\n");
+#endif
 			sb->s_flags |= MS_RDONLY;
 			*flags |= MS_RDONLY;
 		} else if (force) {
@@ -306,11 +340,20 @@ static int hfsplus_remount(struct super_block *sb, int *flags, char *data)
 			*flags |= MS_RDONLY;
 		} else if (vhdr->attributes &
 				cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+#ifndef CONFIG_HFSPLUS_JOURNAL /* TODO: place of this function should be above unmount check */
 			printk(KERN_WARNING "hfs: filesystem is "
 					"marked journaled, "
 					"leaving read-only.\n");
 			sb->s_flags |= MS_RDONLY;
 			*flags |= MS_RDONLY;
+#else
+                       if (hfsplus_journaled_check(sb)) {
+                               printk("HFS+-fs: Filesystem is marked journaled, leaving read-only.\n");
+                               sb->s_flags |= MS_RDONLY;
+                               *flags |= MS_RDONLY;
+                       } else
+                               printk("HFS+-fs: Able to mount journaled hfsplus volume in read-write mode\n");
+#endif
 		}
 	}
 	return 0;
@@ -339,6 +382,9 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 	struct qstr str;
 	struct nls_table *nls = NULL;
 	int err;
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	int jnl_ret;
+#endif
 
 	err = -EINVAL;
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
@@ -379,6 +425,23 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 		printk(KERN_ERR "hfs: wrong filesystem version\n");
 		goto out_free_vhdr;
 	}
+
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	hfsplus_journaled_init(sb, vhdr);
+	if (HFSPLUS_SB(sb).jnl.journaled == HFSPLUS_JOURNAL_PRESENT) {
+		if (hfsplus_journaled_check(sb)) {
+			if (!silent)
+				printk("HFS+-fs: Error in journal, use the force option at your own risk, mounting read-only.\n");
+			if (HFSPLUS_SB(sb).s_vhdr == NULL) {
+				printk("HFS+-fs: Error in Volume Header\n");
+				goto cleanup;
+			}
+			sb->s_flags |= MS_RDONLY;
+		} else
+			dprint(DBG_JOURNAL, "HFS+-fs: No problem in journal. Should be able to mount hfsplus volume in read-write mode\n");
+	}
+#endif /* CONFIG_HFSPLUS_JOURNAL */
+
 	sbi->total_blocks = be32_to_cpu(vhdr->total_blocks);
 	sbi->free_blocks = be32_to_cpu(vhdr->free_blocks);
 	sbi->next_cnid = be32_to_cpu(vhdr->next_cnid);
@@ -402,7 +465,9 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 				"not cleanly unmounted, "
 				"running fsck.hfsplus is recommended.  "
 				"mounting read-only.\n");
+#ifndef CONFIG_HFSPLUS_JOURNAL
 		sb->s_flags |= MS_RDONLY;
+#endif
 	} else if (test_and_clear_bit(HFSPLUS_SB_FORCE, &sbi->flags)) {
 		/* nothing */
 	} else if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_SOFTLOCK)) {
@@ -410,11 +475,13 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 		sb->s_flags |= MS_RDONLY;
 	} else if ((vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) &&
 			!(sb->s_flags & MS_RDONLY)) {
+#ifndef CONFIG_HFSPLUS_JOURNAL
 		printk(KERN_WARNING "hfs: write access to "
 				"a journaled filesystem is not supported, "
 				"use the force option at your own risk, "
 				"mounting read-only.\n");
 		sb->s_flags |= MS_RDONLY;
+#endif /* CONFIG_HFSPLUS_JOURNAL */
 	}
 
 	/* Load metadata objects (B*Trees) */
@@ -467,12 +534,25 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 		 * H+LX == hfsplusutils, H+Lx == this driver, H+lx is unused
 		 * all three are registered with Apple for our use
 		 */
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (HFSPLUS_SB(sb).jnl.journaled == HFSPLUS_JOURNAL_PRESENT) {
+			vhdr->last_mount_vers = cpu_to_be32(HFSP_MOUNT_JOURNALED_VERSION);
+		}
+		else
+#endif
 		vhdr->last_mount_vers = cpu_to_be32(HFSP_MOUNT_VERSION);
 		vhdr->modify_date = hfsp_now2mt();
 		be32_add_cpu(&vhdr->write_count, 1);
 		vhdr->attributes &= cpu_to_be32(~HFSPLUS_VOL_UNMNT);
 		vhdr->attributes |= cpu_to_be32(HFSPLUS_VOL_INCNSTNT);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	jnl_ret = hfsplus_journaled_start_transaction(NULL, sb);
+#endif
 		hfsplus_sync_fs(sb, 1);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	if (jnl_ret == HFSPLUS_JOURNAL_SUCCESS)
+		hfsplus_journaled_end_transaction(NULL, sb);
+#endif
 
 		if (!sbi->hidden_dir) {
 			mutex_lock(&sbi->vh_mutex);

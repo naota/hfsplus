@@ -559,3 +559,35 @@ out:
 	inode_set_bytes(inode, hip->fs_blocks << sb->s_blocksize_bits);
 	hfsplus_mark_inode_dirty(inode, HFSPLUS_I_ALLOC_DIRTY);
 }
+
+#ifdef CONFIG_HFSPLUS_JOURNAL
+int hfsplus_journaled_get_block(struct page *page)
+{
+	struct inode * const inode = page->mapping->host;
+	struct super_block * const sb = inode->i_sb;
+	u32 ablock, res;
+	sector_t iblock;
+	s32 block_num = -1;
+
+	iblock = page->index << (PAGE_CACHE_SHIFT - inode->i_blkbits);
+	ablock = iblock >> HFSPLUS_SB(sb).fs_shift;
+	if (ablock < HFSPLUS_I(inode).first_blocks) {
+		block_num = hfsplus_ext_find_block(HFSPLUS_I(inode).first_extents, ablock);
+	}
+	else {
+		down(&HFSPLUS_I(inode).extents_lock);
+		res = hfsplus_ext_read_extent(inode, ablock);
+		if (!res) {
+			down(&HFSPLUS_I(inode).extents_lock);
+			block_num = hfsplus_ext_find_block(HFSPLUS_I(inode).cached_extents, ablock -
+                    HFSPLUS_I(inode).cached_start);
+			up(&HFSPLUS_I(inode).extents_lock);
+		} else {
+			up(&HFSPLUS_I(inode).extents_lock);
+		}
+		up(&HFSPLUS_I(inode).extents_lock);
+	}
+
+	return block_num;
+}
+#endif /* CONFIG_HFSPLUS_JOURNAL */
