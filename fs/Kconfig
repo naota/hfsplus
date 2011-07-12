@@ -921,6 +921,12 @@ config HFSPLUS_FS
 	  data forks and creator codes, but it also has several UNIX
 	  style features such as file ownership and permissions.
 
+config HFSPLUS_JOURNAL
+	bool "HFSPLUS journal support"
+	depends on HFSPLUS_FS
+	help
+		Enabling journal support in HFSPlus file system.
+
 config BEFS_FS
 	tristate "BeOS file system (BeFS) support (read only) (EXPERIMENTAL)"
 	depends on EXPERIMENTAL
