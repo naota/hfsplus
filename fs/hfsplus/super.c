@@ -68,10 +68,20 @@ static void hfsplus_read_inode(struct inode *inode)
 		goto read_inode;
 	case HFSPLUS_EXT_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->ext_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	case HFSPLUS_CAT_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->cat_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	case HFSPLUS_ALLOC_CNID:
@@ -83,6 +93,11 @@ static void hfsplus_read_inode(struct inode *inode)
 		break;
 	case HFSPLUS_ATTR_CNID:
 		hfsplus_inode_read_fork(inode, &vhdr->attr_file);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+			inode->i_mapping->a_ops = &hfsplus_journaled_btree_aops;
+		} else
+#endif
 		inode->i_mapping->a_ops = &hfsplus_btree_aops;
 		break;
 	default:
