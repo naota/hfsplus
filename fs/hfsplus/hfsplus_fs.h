@@ -114,6 +114,60 @@ struct hfs_bnode {
 #define HFS_BNODE_DIRTY		3
 #define HFS_BNODE_DELETED	4
 
+#ifdef CONFIG_HFSPLUS_JOURNAL
+/* An HFS+ Journal held in memory */
+struct hfsplus_journal;
+
+struct hfsplus_transaction {
+	unsigned char *tbuf; 
+	u32 tbuf_size;
+	struct hfsplus_block_list_header *blhdr;
+	struct hfsplus_block_info *binfo;
+	u32 num_blhdrs;
+	u32 total_bytes;
+	u32 num_flushed;
+	u32 num_killed;
+	u64 sector_number;
+	u64 journal_start;
+	u64 journal_end;
+	u32 sequence_num;
+	struct hfsplus_journal *jnl;
+	struct list_head list;
+};
+
+struct hfsplus_journal {
+	struct semaphore jnl_lock;
+	u32 journaled;
+	u32 flags;
+
+	/* Journal info block specific */
+	struct buffer_head *jib_bh;
+	struct hfsplus_journal_info_block *jibhdr;
+	u64 jib_offset;
+
+	/* Journal header specific */
+	struct buffer_head *jh_bh;
+	u32 jh_bh_size;
+	u64 jh_offset;
+	struct hfsplus_journal_header *jhdr;
+
+	/* Link list of meta-data transaction */
+	struct list_head tr_list;
+
+	/* Pointer to the last transaction */
+	struct hfsplus_transaction *active_tr;
+
+	/* block number of meta-data */
+	u32 ext_block;
+	u32 alloc_block;
+	u32 catalog_block;
+	u32 attr_block;
+
+	struct super_block *sbp;
+	u32 sequence_num;
+};
+#endif /* CONFIG_HFSPLUS_JOURNAL */
+
 /*
  * HFS+ superblock info (built from Volume Header on disk)
  */
@@ -137,6 +191,9 @@ struct hfsplus_sb_info {
 	int fs_shift;
 
 	/* Stuff in host order from Vol Header */
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	struct hfsplus_journal jnl;
+#endif
 	u32 alloc_blksz;
 	int alloc_blksz_shift;
 	u32 total_blocks;
