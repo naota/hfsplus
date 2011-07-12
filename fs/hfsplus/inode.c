@@ -144,7 +144,20 @@ static ssize_t hfsplus_direct_IO(int rw, struct kiocb *iocb,
 static int hfsplus_writepages(struct address_space *mapping,
 			      struct writeback_control *wbc)
 {
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	struct inode * const inode = mapping->host;
+	int ret;
+	u32 block_num = be32_to_cpu(HFSPLUS_I(inode).first_extents[0].start_block);
+
+	if (block_num == 1)
+		return mpage_writepages(mapping, wbc, NULL);
+	else
+		return mpage_writepages(mapping, wbc, hfsplus_get_block);
+
+	return ret;
+#else
 	return mpage_writepages(mapping, wbc, hfsplus_get_block);
+#endif
 }
 
 #ifdef CONFIG_HFSPLUS_JOURNAL
