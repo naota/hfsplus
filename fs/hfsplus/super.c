@@ -207,6 +207,9 @@ static void hfsplus_write_super(struct super_block *sb)
 
 static void hfsplus_put_super(struct super_block *sb)
 {
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	int jnl_ret;
+#endif
 	dprint(DBG_SUPER, "hfsplus_put_super\n");
 	if (!sb->s_fs_info)
 		return;
@@ -216,8 +219,15 @@ static void hfsplus_put_super(struct super_block *sb)
 		vhdr->modify_date = hfsp_now2mt();
 		vhdr->attributes |= cpu_to_be32(HFSPLUS_VOL_UNMNT);
 		vhdr->attributes &= cpu_to_be32(~HFSPLUS_VOL_INCNSTNT);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		jnl_ret = hfsplus_journaled_start_transaction(NULL, sb);
+#endif
 		mark_buffer_dirty(HFSPLUS_SB(sb).s_vhbh);
 		sync_dirty_buffer(HFSPLUS_SB(sb).s_vhbh);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+		if (jnl_ret == HFSPLUS_JOURNAL_SUCCESS)
+			hfsplus_journaled_end_transaction(NULL, sb);
+#endif
 	}
 
 	hfs_btree_close(HFSPLUS_SB(sb).cat_tree);
@@ -305,6 +315,9 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 	struct qstr str;
 	struct nls_table *nls = NULL;
 	int err = -EINVAL;
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	int jnl_ret;
+#endif
 
 	sbi = kmalloc(sizeof(struct hfsplus_sb_info), GFP_KERNEL);
 	if (!sbi)
@@ -463,8 +476,15 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 	vhdr->write_count = cpu_to_be32(be32_to_cpu(vhdr->write_count) + 1);
 	vhdr->attributes &= cpu_to_be32(~HFSPLUS_VOL_UNMNT);
 	vhdr->attributes |= cpu_to_be32(HFSPLUS_VOL_INCNSTNT);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	jnl_ret = hfsplus_journaled_start_transaction(NULL, sb);
+#endif
 	mark_buffer_dirty(HFSPLUS_SB(sb).s_vhbh);
 	sync_dirty_buffer(HFSPLUS_SB(sb).s_vhbh);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	if (jnl_ret == HFSPLUS_JOURNAL_SUCCESS)
+		hfsplus_journaled_end_transaction(NULL, sb);
+#endif
 
 	if (!HFSPLUS_SB(sb).hidden_dir) {
 		printk("HFS+: create hidden dir...\n");
