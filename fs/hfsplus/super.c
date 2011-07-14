@@ -224,6 +224,10 @@ static void hfsplus_put_super(struct super_block *sb)
 	hfs_btree_close(HFSPLUS_SB(sb).ext_tree);
 	iput(HFSPLUS_SB(sb).alloc_file);
 	iput(HFSPLUS_SB(sb).hidden_dir);
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	hfsplus_journaled_deinit(sb);
+	if (HFSPLUS_SB(sb).s_vhbh)
+#endif
 	brelse(HFSPLUS_SB(sb).s_vhbh);
 	if (HFSPLUS_SB(sb).nls)
 		unload_nls(HFSPLUS_SB(sb).nls);
