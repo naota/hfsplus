@@ -21,11 +21,19 @@
 #define DBG_SUPER	0x00000010
 #define DBG_EXTENT	0x00000020
 #define DBG_BITMAP	0x00000040
+#ifdef CONFIG_HFSPLUS_JOURNAL
+#define DBG_JOURNAL	0x00000080
+#define DBG_JREPLAY	0x00000100
+#define DBG_JTRANS	0x00000200
+#endif
 
 //#define DBG_MASK	(DBG_EXTENT|DBG_INODE|DBG_BNODE_MOD)
 //#define DBG_MASK	(DBG_BNODE_MOD|DBG_CAT_MOD|DBG_INODE)
 //#define DBG_MASK	(DBG_CAT_MOD|DBG_BNODE_REFS|DBG_INODE|DBG_EXTENT)
-#define DBG_MASK	(0)
+//#define DBG_MASK	(0)
+#ifdef CONFIG_HFSPLUS_JOURNAL
+#define DBG_MASK		(DBG_JOURNAL)
+#endif
 
 #define dprint(flg, fmt, args...) \
 	if (flg & DBG_MASK) printk(fmt , ## args)
