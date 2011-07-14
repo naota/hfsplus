@@ -273,20 +273,35 @@ static int hfsplus_remount(struct super_block *sb, int *flags, char *data)
 			return -EINVAL;
 
 		if (!(vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_UNMNT))) {
+#if 0
 			printk("HFS+-fs warning: Filesystem was not cleanly unmounted, "
 			       "running fsck.hfsplus is recommended.  leaving read-only.\n");
 			sb->s_flags |= MS_RDONLY;
 			*flags |= MS_RDONLY;
-		} else if (sbi.flags & HFSPLUS_SB_FORCE) {
+#else
+			printk("HFS+-fs warning: Filesystem was not cleanly unmounted, "
+					"running fsck.hfsplus is recommended.\n");
+#endif
+		} else 
+		if (sbi.flags & HFSPLUS_SB_FORCE) {
 			/* nothing */
 		} else if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_SOFTLOCK)) {
 			printk("HFS+-fs: Filesystem is marked locked, leaving read-only.\n");
 			sb->s_flags |= MS_RDONLY;
 			*flags |= MS_RDONLY;
 		} else if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+#ifndef CONFIG_HFSPLUS_JOURNAL /* TODO: place of this function should be above unmount check */
 			printk("HFS+-fs: Filesystem is marked journaled, leaving read-only.\n");
 			sb->s_flags |= MS_RDONLY;
 			*flags |= MS_RDONLY;
+#else
+			if (hfsplus_journaled_check(sb)) {
+				printk("HFS+-fs: Filesystem is marked journaled, leaving read-only.\n");
+				sb->s_flags |= MS_RDONLY;
+				*flags |= MS_RDONLY;
+			} else
+				printk("HFS+-fs: Able to mount journaled hfsplus volume in read-write mode\n");
+#endif
 		}
 	}
 	return 0;
@@ -394,10 +409,16 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 
 	if (!(vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_UNMNT))) {
+#if 0
 		if (!silent)
 			printk("HFS+-fs warning: Filesystem was not cleanly unmounted, "
 			       "running fsck.hfsplus is recommended.  mounting read-only.\n");
 		sb->s_flags |= MS_RDONLY;
+#else
+		if (!silent)
+			printk("HFS+-fs warning: Filesystem was not cleanly unmounted, "
+					"running fsck.hfsplus is recommended.\n");
+#endif
 	} else if (sbi->flags & HFSPLUS_SB_FORCE) {
 		/* nothing */
 	} else if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_SOFTLOCK)) {
