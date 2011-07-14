@@ -342,6 +342,23 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 			printk("HFS+-fs: wrong filesystem version\n");
 		goto cleanup;
 	}
+
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	hfsplus_journaled_init(sb, vhdr);
+	if (HFSPLUS_SB(sb).jnl.journaled == HFSPLUS_JOURNAL_PRESENT) {
+		if (hfsplus_journaled_check(sb)) {
+			if (!silent)
+				printk("HFS+-fs: Error in journal, use the force option at your own risk, mounting read-only.\n");
+			if (HFSPLUS_SB(sb).s_vhdr == NULL) {
+				printk("HFS+-fs: Error in Volume Header\n");
+				goto cleanup;
+			}
+			sb->s_flags |= MS_RDONLY;
+		} else
+			dprint(DBG_JOURNAL, "HFS+-fs: No problem in journal. Should be able to mount hfsplus volume in read-write mode\n");
+	}
+#endif /* CONFIG_HFSPLUS_JOURNAL */
+
 	HFSPLUS_SB(sb).total_blocks = be32_to_cpu(vhdr->total_blocks);
 	HFSPLUS_SB(sb).free_blocks = be32_to_cpu(vhdr->free_blocks);
 	HFSPLUS_SB(sb).next_alloc = be32_to_cpu(vhdr->next_alloc);
@@ -371,10 +388,12 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 			printk("HFS+-fs: Filesystem is marked locked, mounting read-only.\n");
 		sb->s_flags |= MS_RDONLY;
 	} else if (vhdr->attributes & cpu_to_be32(HFSPLUS_VOL_JOURNALED)) {
+#ifndef CONFIG_HFSPLUS_JOURNAL
 		if (!silent)
 			printk("HFS+-fs: write access to a jounaled filesystem is not supported, "
 			       "use the force option at your own risk, mounting read-only.\n");
 		sb->s_flags |= MS_RDONLY;
+#endif /* CONFIG_HFSPLUS_JOURNAL */
 	}
 	sbi->flags &= ~HFSPLUS_SB_FORCE;
 
@@ -429,6 +448,12 @@ static int hfsplus_fill_super(struct super_block *sb, void *data, int silent)
 	/* H+LX == hfsplusutils, H+Lx == this driver, H+lx is unused
 	 * all three are registered with Apple for our use
 	 */
+#ifdef CONFIG_HFSPLUS_JOURNAL
+	if (HFSPLUS_SB(sb).jnl.journaled == HFSPLUS_JOURNAL_PRESENT) {
+		vhdr->last_mount_vers = cpu_to_be32(HFSP_MOUNT_JOURNALED_VERSION);
+	}
+	else
+#endif
 	vhdr->last_mount_vers = cpu_to_be32(HFSP_MOUNT_VERSION);
 	vhdr->modify_date = hfsp_now2mt();
 	vhdr->write_count = cpu_to_be32(be32_to_cpu(vhdr->write_count) + 1);
