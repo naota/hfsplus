@@ -33,6 +33,14 @@
 //#define DBG_MASK	(0)
 #ifdef CONFIG_HFSPLUS_JOURNAL
 #define DBG_MASK		(DBG_JOURNAL)
+
+#define HFSPLUS_JOURNAL_PRESENT			1
+#define HFSPLUS_JOURNAL_CONSISTENT		0
+#define HFSPLUS_JOURNAL_INCONSISTENT	1
+#define HFSPLUS_JOURNAL_UIBYTE			0x5A /* Unimportant byte value */
+#define HFSPLUS_JOURNAL_SUCCESS			0
+#define HFSPLUS_JOURNAL_FAIL				1
+#define HFSPLUS_JOURNAL_SWAP				1
 #endif
 
 #define dprint(flg, fmt, args...) \
