@@ -96,6 +96,30 @@ static int hfsplus_releasepage(struct page *page, gfp_t mask)
 	return res ? try_to_free_buffers(page) : 0;
 }
 
+#ifdef CONFIG_HFSPLUS_JOURNAL
+static int hfsplus_journaled_writepage(struct page *page, struct writeback_control *wbc)
+{
+	int jnl_ret, ret = 0;
+	struct inode * const inode = page->mapping->host;
+	loff_t i_size = i_size_read(inode);
+	const pgoff_t end_index = i_size >> PAGE_CACHE_SHIFT;
+
+   /* Is the page fully inside i_size? */
+   if (page->index < end_index) {
+		jnl_ret = hfsplus_journaled_start_transaction(page, NULL);
+
+		ret = block_write_full_page(page, hfsplus_get_block, wbc);
+
+		if (jnl_ret == HFSPLUS_JOURNAL_SUCCESS && !ret)
+			hfsplus_journaled_end_transaction(page, NULL);
+	}
+	else
+		ret = block_write_full_page(page, hfsplus_get_block, wbc);
+
+	return ret;
+}
+#endif
+
 static int hfsplus_get_blocks(struct inode *inode, sector_t iblock, unsigned long max_blocks,
 			      struct buffer_head *bh_result, int create)
 {
@@ -122,6 +146,18 @@ static int hfsplus_writepages(struct address_space *mapping,
 {
 	return mpage_writepages(mapping, wbc, hfsplus_get_block);
 }
+
+#ifdef CONFIG_HFSPLUS_JOURNAL
+struct address_space_operations hfsplus_journaled_btree_aops = {
+	.readpage	= hfsplus_readpage,
+	.writepage	= hfsplus_journaled_writepage,
+	.sync_page	= block_sync_page,
+	.prepare_write	= hfsplus_prepare_write,
+	.commit_write	= generic_commit_write,
+	.bmap		= hfsplus_bmap,
+	.releasepage	= hfsplus_releasepage,
+};
+#endif
 
 struct address_space_operations hfsplus_btree_aops = {
 	.readpage	= hfsplus_readpage,

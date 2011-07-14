@@ -398,6 +398,9 @@ void hfsplus_file_truncate(struct inode *);
 /* inode.c */
 extern struct address_space_operations hfsplus_aops;
 extern struct address_space_operations hfsplus_btree_aops;
+#ifdef CONFIG_HFSPLUS_JOURNAL
+extern struct address_space_operations hfsplus_journaled_btree_aops;
+#endif
 
 void hfsplus_inode_read_fork(struct inode *, struct hfsplus_fork_raw *);
 void hfsplus_inode_write_fork(struct inode *, struct hfsplus_fork_raw *);
