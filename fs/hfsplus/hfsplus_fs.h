@@ -435,6 +435,17 @@ int hfsplus_read_wrapper(struct super_block *);
 
 int hfs_part_find(struct super_block *, sector_t *, sector_t *);
 
+#ifdef CONFIG_HFSPLUS_JOURNAL
+/* journal.c */
+void hfsplus_journaled_init(struct super_block *, struct hfsplus_vh *);
+void hfsplus_journaled_deinit(struct super_block *);
+int hfsplus_journaled_create(struct super_block *);
+int hfsplus_journaled_check(struct super_block *);
+int hfsplus_journaled_start_transaction(struct page *, struct super_block *);
+void hfsplus_journaled_end_transaction(struct page *, struct super_block *);
+void print_volume_header(struct super_block *);
+#endif /* CONFIG_HFSPLUS_JOURNAL */
+
 /* access macros */
 /*
 static inline struct hfsplus_sb_info *HFSPLUS_SB(struct super_block *sb)
