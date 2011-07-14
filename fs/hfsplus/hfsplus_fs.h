@@ -444,6 +444,9 @@ int hfsplus_journaled_check(struct super_block *);
 int hfsplus_journaled_start_transaction(struct page *, struct super_block *);
 void hfsplus_journaled_end_transaction(struct page *, struct super_block *);
 void print_volume_header(struct super_block *);
+
+/* extents.c */
+int hfsplus_journaled_get_block(struct page *page);
 #endif /* CONFIG_HFSPLUS_JOURNAL */
 
 /* access macros */
